@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  PRINCIPAL
+  ADMIN
+  ACCOUNTANT
+  TEACHER
+  STUDENT
+  PARENT
+  LIBRARIAN
+  EXAM_OFFICER
+  RECEPTIONIST
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  SUSPENDED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+  OVERDUE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STUDENT)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  student      Student?
+  teacher      Teacher?
+  auditLogs    AuditLog[] @relation("ActorAuditLogs")
+}
+
+model Student {
+  id             String        @id @default(cuid())
+  studentCode    String        @unique
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  guardianName   String?
+  guardianPhone  String?
+  className      String
+  section        String?
+  admissionDate  DateTime      @default(now())
+  status         StudentStatus @default(ACTIVE)
+  userId         String?       @unique
+  user           User?         @relation(fields: [userId], references: [id])
+  attendance     Attendance[]
+  invoices       FeeInvoice[]
+  marks          ExamMark[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([className, section])
+  @@index([status])
+}
+
+model Teacher {
+  id            String   @id @default(cuid())
+  employeeCode  String   @unique
+  name          String
+  email         String?  @unique
+  phone         String?
+  department    String?
+  joinedAt      DateTime @default(now())
+  annualLeave   Int      @default(20)
+  userId        String?  @unique
+  user          User?    @relation(fields: [userId], references: [id])
+  attendance    StaffAttendance[]
+  leaveRequests LeaveRequest[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      DateTime
+  status    AttendanceStatus
+  note      String?
+  createdAt DateTime         @default(now())
+
+  @@unique([studentId, date])
+  @@index([date, status])
+}
+
+model FeeInvoice {
+  id          String        @id @default(cuid())
+  invoiceNo   String        @unique
+  studentId   String
+  student     Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  description String
+  amount      Decimal       @db.Decimal(12, 2)
+  paidAmount  Decimal       @default(0) @db.Decimal(12, 2)
+  dueDate     DateTime?
+  status      PaymentStatus @default(UNPAID)
+  payments    Payment[]
+  createdAt   DateTime      @default(now())
+
+  @@index([status])
+}
+
+model Payment {
+  id          String     @id @default(cuid())
+  invoiceId   String
+  invoice     FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount      Decimal    @db.Decimal(12, 2)
+  method      String     @default("CASH")
+  reference   String?
+  receivedAt  DateTime   @default(now())
+  receivedBy  String?
+}
+
+model Exam {
+  id          String     @id @default(cuid())
+  title       String
+  className   String
+  subject     String
+  examDate    DateTime?
+  totalMarks  Int
+  published   Boolean    @default(false)
+  marks       ExamMark[]
+  createdAt   DateTime   @default(now())
+}
+
+model ExamMark {
+  id          String  @id @default(cuid())
+  examId      String
+  exam        Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  obtained    Int
+  remarks     String?
+
+  @@unique([examId, studentId])
+}
+
+model StaffAttendance {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  date      DateTime
+  status    String
+  note      String?
+
+  @@unique([teacherId, date])
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  teacherId   String
+  teacher     Teacher     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  reason      String
+  status      LeaveStatus @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime    @default(now())
+}
+
+model Notice {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  audience  String   @default("ALL")
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
